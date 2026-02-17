@@ -1,0 +1,935 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pitching Coach Pro - Multi-Zone Mode</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 0;
+            margin: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .strike-zone-container {
+            position: relative;
+            background-color: #1e293b;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+            width: 100%;
+            touch-action: none;
+            border: 3px solid #334155;
+        }
+        #strikeZoneCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        .pitch-dot {
+            position: absolute;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            transition: transform 0.1s ease-out, width 0.2s ease-in-out, height 0.2s ease-in-out;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            border: 2px solid transparent;
+            z-index: 20;
+        }
+        .pitch-dot.fastball { background-color: #3b82f6; }
+        .pitch-dot.curveball { background-color: #8b5cf6; }
+        .pitch-dot.slider { background-color: #ef4444; }
+        .pitch-dot.changeup { background-color: #22c55e; }
+        .pitch-dot.sinker { background-color: #f97316; }
+        .pitch-dot.strike { border-color: #facc15; box-shadow: 0 0 12px #facc15; }
+        .pitch-dot.ball { border-color: #60a5fa; box-shadow: 0 0 10px #3b82f6; }
+        .pitch-dot.perfect { border-color: #fbbf24; box-shadow: 0 0 15px #fbbf24; border-width: 4px; }
+
+        .pitch-dot-label {
+            position: absolute;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #fff;
+            transform: translate(-50%, -180%);
+            background-color: rgba(15, 23, 42, 0.95);
+            padding: 4px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+            border: 1px solid #475569;
+        }
+        .pitch-dot:hover .pitch-dot-label { opacity: 1; }
+        
+        @keyframes pitch-pop-in {
+            0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+            70% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+        .pitch-dot.new-pitch-animation {
+            animation: pitch-pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        .target-zone-grid {
+            display: grid;
+            gap: 10px;
+        }
+        .grid-5x5 { grid-template-columns: repeat(5, 1fr); }
+        .grid-4x4 { grid-template-columns: repeat(4, 1fr); }
+
+        .target-zone-cell {
+            aspect-ratio: 1 / 1;
+            position: relative;
+            background-color: #334155;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid #475569;
+            min-width: 44px;
+        }
+        .target-zone-cell span {
+            font-size: 1.1rem;
+            font-weight: 800;
+            color: #94a3b8;
+        }
+        .grid-4x4 .target-zone-cell span { font-size: 1.5rem; }
+        .target-zone-cell.strike-zone { background-color: #1e293b; border-color: #6366f1; }
+        .target-zone-cell.strike-zone span { color: #818cf8; }
+        .target-zone-cell:hover { background-color: #475569; transform: scale(1.05); }
+        .target-zone-cell:active { transform: scale(0.95); }
+        .target-zone-cell.selected {
+            background-color: #d97706;
+            border-color: #f59e0b;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+            z-index: 10;
+        }
+        .target-zone-cell.selected span { color: white; }
+
+        .rank-1 { background: linear-gradient(135deg, #fbbf24, #d97706); color: #0f172a; }
+        .rank-2 { background: linear-gradient(135deg, #94a3b8, #475569); color: white; }
+        .rank-3 { background: linear-gradient(135deg, #b45309, #78350f); color: white; }
+
+        input, select, textarea {
+            font-size: 16px !important;
+        }
+
+        /* High-Affordance Outlined Buttons */
+        .mode-toggle-container {
+            @apply flex p-2 bg-slate-950 rounded-[1.5rem] border-2 border-slate-700 shadow-2xl gap-2;
+        }
+        .toggle-tab {
+            @apply flex-1 flex items-center justify-center py-5 rounded-[1.1rem] text-lg font-black uppercase tracking-[0.15em] text-center transition-all cursor-pointer select-none;
+            border: 3px solid transparent;
+        }
+        .toggle-tab.active {
+            @apply bg-blue-600 text-white shadow-[0_8px_20px_-4px_rgba(37,99,235,0.6)];
+            border: 3px solid #93c5fd; 
+            transform: scale(1.02);
+        }
+        .toggle-tab:not(.active) {
+            @apply text-slate-500 hover:text-slate-300 hover:bg-slate-800/60;
+            border: 3px solid #334155; 
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
+
+        .review-mode-active {
+            position: relative;
+        }
+        .review-mode-active::after {
+            content: 'REVIEW MODE';
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: #ef4444;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: 0.1em;
+            z-index: 50;
+            pointer-events: none;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, deleteDoc, doc, getDocs, orderBy, setDoc, getDoc, where, updateDoc, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+            authDomain: "example-project-12345.firebaseapp.com",
+            projectId: "example-project-12345",
+            storageBucket: "example-project-12345.appspot.com",
+            messagingSenderId: "123456789012",
+            appId: "1:123456789012:web:a1b2c3d4e5f6a1b2c3d4e5"
+        };
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const DEFAULT_COACH_ID = 'main-coach';
+        let isOnlineMode = true;
+
+        let db;
+        let canvas, ctx, totalScoreEl, pitchListEl, clearButton, pitchesContainer, pitchTypeSelect, pitchTypeScoresEl;
+        let pitcherNameInput, addPitcherButton, pitcherSelect, currentPitcherDisplay, handednessSelect;
+        let saveSessionBtn, searchInput, searchBtn, searchResultsEl, viewCurrentSessionBtn;
+        let targetZoneGridEl, targetZoneDisplayEl, pitchSpeedInput, appContainer, statusDisplayEl, pitchCountEl;
+        let coachingNotesContainer, notesPitcherNameEl, commentInput, saveCommentBtn, commentsListEl;
+        let leaderboardListEl, pitcherStatsEl, coachingNotesHeader;
+
+        let pitches = [];
+        let pitchers = [];
+        let currentSessionNotes = [];
+        let selectedPitcherId = null;
+        let selectedPitcherName = null;
+        let totalScore = 0;
+        let isViewingPastSession = false;
+        let unsubscribePitches = null;
+        let selectedTargetZoneIndex = null;
+        let coachId = DEFAULT_COACH_ID; 
+        
+        let currentGridMode = 'precision';
+
+        const STRIKE_ZONE_WIDTH_INCHES = 17;
+        const STRIKE_ZONE_HEIGHT_INCHES = 24;
+        const BASEBALL_DIAMETER_INCHES = 2.9;
+        const CANVAS_ASPECT_RATIO = 1.4117;
+
+        const TARGET_ZONE_LAYOUT_5X5 = [
+            21, 22, 23, 24, 25,
+            16, 1, 2, 3, 17,
+            15, 4, 5, 6, 18,
+            14, 7, 8, 9, 19,
+            13, 12, 11, 10, 20
+        ];
+        
+        const TARGET_ZONE_LAYOUT_BASIC = [
+            { id: 13, row: 1, col: 1 }, { id: 11, row: 1, col: 2 }, { id: 12, row: 1, col: 3 }, { id: 14, row: 1, col: 4 },
+            { id: 5, row: 2, col: 1 }, { id: 1, row: 2, col: 2 }, { id: 2, row: 2, col: 3 }, { id: 7, row: 2, col: 4 },
+            { id: 6, row: 3, col: 1 }, { id: 3, row: 3, col: 2 }, { id: 4, row: 3, col: 3 }, { id: 8, row: 3, col: 4 },
+            { id: 15, row: 4, col: 1 }, { id: 9, row: 4, col: 2 }, { id: 10, row: 4, col: 3 }, { id: 16, row: 4, col: 4 }
+        ];
+
+        const STRIKE_ZONES_5X5 = [1,2,3,4,5,6,7,8,9];
+        const STRIKE_ZONES_BASIC = [1,2,3,4];
+
+        const getLocalData = (key) => JSON.parse(localStorage.getItem(`${appId}_${key}`)) || [];
+        const setLocalData = (key, data) => localStorage.setItem(`${appId}_${key}`, JSON.stringify(data));
+
+        const getGridMetrics = () => {
+            const containerWidth = pitchesContainer ? pitchesContainer.offsetWidth : 0;
+            const containerHeight = pitchesContainer ? pitchesContainer.offsetHeight : 0;
+            if (containerWidth === 0 || containerHeight === 0) return { gridWidth: 0, gridHeight: 0, gridX: 0, gridY: 0, cellWidth: 0, cellHeight: 0, dotSize: 0 };
+            
+            const gridWidth = containerWidth;
+            const gridHeight = containerHeight;
+            const gridX = 0;
+            const gridY = 0;
+            const cols = currentGridMode === 'precision' ? 5 : 4;
+            const rows = currentGridMode === 'precision' ? 5 : 4;
+            const cellWidth = gridWidth / cols;
+            const cellHeight = gridHeight / rows;
+            const strikeZoneWidthPx = currentGridMode === 'precision' ? cellWidth * 3 : cellWidth * 2;
+            const dotSize = (BASEBALL_DIAMETER_INCHES / STRIKE_ZONE_WIDTH_INCHES) * strikeZoneWidthPx;
+            return { gridWidth, gridHeight, gridX, gridY, cellWidth, cellHeight, dotSize, cols, rows };
+        };
+
+        const resetCanvas = () => {
+            if (!pitchesContainer || !canvas) return;
+            const containerWidth = pitchesContainer.offsetWidth;
+            if (containerWidth === 0) return;
+            pitchesContainer.style.height = `${containerWidth * CANVAS_ASPECT_RATIO}px`;
+            canvas.width = pitchesContainer.offsetWidth;
+            canvas.height = pitchesContainer.offsetHeight;
+            drawStrikeZone();
+            redrawPitches();
+        };
+
+        const drawStrikeZone = () => {
+            if (!ctx || !canvas) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const { gridX, gridY, gridWidth, gridHeight, cellWidth, cellHeight, cols, rows } = getGridMetrics();
+            if (gridWidth === 0) return;
+
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 1.5;
+            for (let i = 1; i < cols; i++) {
+                ctx.beginPath(); ctx.moveTo(gridX + i * cellWidth, gridY); ctx.lineTo(gridX + i * cellWidth, gridY + gridHeight); ctx.stroke();
+            }
+            for (let i = 1; i < rows; i++) {
+                ctx.beginPath(); ctx.moveTo(gridX, gridY + i * cellHeight); ctx.lineTo(gridX + gridWidth, gridY + i * cellHeight); ctx.stroke();
+            }
+
+            ctx.strokeStyle = isViewingPastSession ? '#ef4444' : '#6366f1';
+            ctx.lineWidth = 4;
+            if (currentGridMode === 'precision') {
+                ctx.strokeRect(gridX + cellWidth, gridY + cellHeight, cellWidth * 3, cellHeight * 3);
+            } else {
+                ctx.strokeRect(gridX + cellWidth, gridY + cellHeight, cellWidth * 2, cellHeight * 2);
+            }
+
+            ctx.font = `bold ${Math.min(cellWidth, cellHeight) / 2.8}px Inter`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            
+            if (currentGridMode === 'precision') {
+                TARGET_ZONE_LAYOUT_5X5.forEach((zoneNum, index) => {
+                    const col = index % 5; const row = Math.floor(index / 5);
+                    const x = gridX + col * cellWidth + cellWidth / 2;
+                    const y = gridY + row * cellHeight + cellHeight / 2;
+                    ctx.fillStyle = STRIKE_ZONES_5X5.includes(zoneNum) ? (isViewingPastSession ? '#f87171' : '#818cf8') : '#475569';
+                    ctx.fillText(zoneNum, x, y);
+                });
+            } else {
+                TARGET_ZONE_LAYOUT_BASIC.forEach((zone) => {
+                    const x = gridX + (zone.col - 1) * cellWidth + cellWidth / 2;
+                    const y = gridY + (zone.row - 1) * cellHeight + cellHeight / 2;
+                    ctx.fillStyle = STRIKE_ZONES_BASIC.includes(zone.id) ? (isViewingPastSession ? '#f87171' : '#818cf8') : '#475569';
+                    ctx.fillText(zone.id, x, y);
+                });
+            }
+
+            ctx.beginPath(); ctx.arc(gridX + gridWidth / 2, gridY + gridHeight / 2, 6, 0, 2 * Math.PI);
+            ctx.fillStyle = '#fbbf24'; ctx.fill();
+
+            if (selectedTargetZoneIndex !== null && !isViewingPastSession) {
+                let targetCol, targetRow;
+                if (currentGridMode === 'precision') {
+                    const idx = TARGET_ZONE_LAYOUT_5X5.indexOf(selectedTargetZoneIndex);
+                    if (idx !== -1) { targetCol = idx % 5; targetRow = Math.floor(idx / 5); }
+                } else {
+                    const zone = TARGET_ZONE_LAYOUT_BASIC.find(z => z.id === selectedTargetZoneIndex);
+                    if (zone) { targetCol = zone.col - 1; targetRow = zone.row - 1; }
+                }
+                
+                if (targetCol !== undefined) {
+                    const targetX = gridX + targetCol * cellWidth; const targetY = gridY + targetRow * cellHeight;
+                    ctx.strokeStyle = '#d97706'; ctx.lineWidth = 6;
+                    ctx.strokeRect(targetX + 3, targetY + 3, cellWidth - 6, cellHeight - 6);
+                }
+            }
+        };
+
+        const redrawPitches = () => {
+            if (!pitchesContainer) return;
+            document.querySelectorAll('.pitch-dot').forEach(el => el.remove());
+            const { dotSize: baseDotSize } = getGridMetrics();
+            if (baseDotSize === 0) return;
+            pitchesContainer.classList.toggle('review-mode-active', isViewingPastSession);
+            
+            pitches.forEach((pitch, index) => {
+                if (pitch.gridMode && pitch.gridMode !== currentGridMode) return;
+                const pitchDot = document.createElement('div');
+                pitchDot.className = 'pitch-dot'; pitchDot.classList.add(pitch.type.toLowerCase());
+                pitchDot.classList.add(pitch.score === 10 ? 'perfect' : (pitch.score === 5 ? 'strike' : 'ball'));
+                let finalDotSize = baseDotSize;
+                if (pitch.speed && pitch.speed > 0) {
+                    const speed = parseInt(pitch.speed, 10);
+                    finalDotSize = baseDotSize * (0.85 + ((Math.max(60, Math.min(100, speed)) - 60) / 40 * 0.4));
+                }
+                if (index === pitches.length - 1 && !isViewingPastSession) pitchDot.classList.add('new-pitch-animation');
+                pitchDot.style.left = `${pitch.x}px`; pitchDot.style.top = `${pitch.y}px`;
+                pitchDot.style.width = `${finalDotSize}px`; pitchDot.style.height = `${finalDotSize}px`;
+                const label = document.createElement('span'); label.className = 'pitch-dot-label';
+                label.textContent = `${pitch.type.toUpperCase()} ${pitch.speed ? `${pitch.speed} MPH` : ''} (+${pitch.score})`;
+                pitchDot.appendChild(label); pitchesContainer.appendChild(pitchDot);
+            });
+        };
+
+        const calculateScore = (x, y) => {
+            if (selectedTargetZoneIndex === null) return 0;
+            const { gridX, gridY, cellWidth, cellHeight, cols, rows } = getGridMetrics();
+            const landedCol = Math.floor((x - gridX) / cellWidth);
+            const landedRow = Math.floor((y - gridY) / cellHeight);
+            
+            let landedZoneId = null;
+            if (currentGridMode === 'precision') {
+                const idx = landedRow * cols + landedCol;
+                if (idx >= 0 && idx < TARGET_ZONE_LAYOUT_5X5.length) landedZoneId = TARGET_ZONE_LAYOUT_5X5[idx];
+            } else {
+                const zone = TARGET_ZONE_LAYOUT_BASIC.find(z => (z.col - 1) === landedCol && (z.row - 1) === landedRow);
+                if (zone) landedZoneId = zone.id;
+            }
+
+            if (landedZoneId === null) return 0;
+            if (landedZoneId === selectedTargetZoneIndex) return 10;
+            if (currentGridMode === 'precision') {
+                const targetIdx = TARGET_ZONE_LAYOUT_5X5.indexOf(selectedTargetZoneIndex);
+                const targetCol = targetIdx % cols; const targetRow = Math.floor(targetIdx / cols);
+                return (Math.abs(landedCol - targetCol) <= 1 && Math.abs(landedRow - targetRow) <= 1) ? 5 : 0;
+            }
+            return 0;
+        };
+
+        const updateUI = () => {
+            totalScore = pitches.reduce((sum, pitch) => sum + (pitch.score || 0), 0);
+            if (totalScoreEl) totalScoreEl.textContent = `Total: ${totalScore}`;
+            if (pitchCountEl) pitchCountEl.textContent = `Count: ${pitches.length}`;
+            
+            if (saveSessionBtn) saveSessionBtn.disabled = isViewingPastSession || pitches.length === 0;
+            if (clearButton) clearButton.disabled = isViewingPastSession || pitches.length === 0;
+            if (saveCommentBtn) saveCommentBtn.disabled = isViewingPastSession;
+            
+            const pitchScoresByType = pitches.reduce((acc, pitch) => { acc[pitch.type] = (acc[pitch.type] || 0) + pitch.score; return acc; }, {});
+            if (pitchTypeScoresEl) {
+                pitchTypeScoresEl.innerHTML = Object.entries(pitchScoresByType).map(([type, score]) => `
+                    <li class="flex items-center justify-between py-3 px-4 bg-slate-700/50 rounded-xl mb-2 border border-slate-600/50 shadow-sm">
+                        <span class="text-sm font-bold uppercase tracking-wider text-slate-400">${type}</span>
+                        <span class="font-black text-lg text-amber-400">${score}</span>
+                    </li>`).join('');
+            }
+            if (pitchListEl) {
+                let logHtml = "";
+                
+                // IF VIEWING PAST SESSION, INJECT NOTES AT TOP OF LOG
+                if (isViewingPastSession && currentSessionNotes.length > 0) {
+                    logHtml += `
+                    <div class="mb-6 bg-amber-950/40 border-2 border-amber-500/30 rounded-[1.5rem] p-5 shadow-lg">
+                        <h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-400 mb-4 flex items-center">
+                            <svg class="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            SESSION NOTES SUMMARY
+                        </h3>
+                        <div class="space-y-3">
+                            ${currentSessionNotes.map(n => `
+                                <div class="text-xs text-slate-200 border-l-2 border-amber-500 pl-3 py-1 font-medium leading-relaxed">
+                                    ${n.text}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+                }
+
+                logHtml += pitches.slice().reverse().map((pitch, index) => {
+                    const realIndex = pitches.length - index;
+                    return `
+                    <li class="flex items-center justify-between py-3 px-4 bg-slate-700/30 rounded-xl mb-3 border border-slate-600/30">
+                        <div class="flex flex-col">
+                            <div class="flex items-center space-x-2">
+                                 <span class="text-[11px] text-slate-500 font-black uppercase tracking-tight">Pitch ${realIndex}</span>
+                                 <span class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded font-black">${(pitch.gridMode || 'P').toUpperCase()[0]}</span>
+                            </div>
+                            <span class="text-base font-bold text-slate-200 capitalize">${pitch.type} <span class="text-slate-400 font-medium">@ ${pitch.speed || '--'} MPH</span></span>
+                        </div>
+                        <span class="font-black text-xl text-amber-400">+${pitch.score}</span>
+                    </li>`;
+                }).join('');
+
+                pitchListEl.innerHTML = logHtml;
+            }
+            redrawPitches(); updateNotesUI();
+        };
+
+        const switchGridMode = (mode) => {
+            currentGridMode = mode;
+            selectedTargetZoneIndex = null;
+            document.querySelectorAll('.toggle-tab').forEach(t => t.classList.remove('active'));
+            const tab = document.getElementById(`tab-${mode}`);
+            if (tab) tab.classList.add('active');
+            
+            if (targetZoneGridEl) {
+                targetZoneGridEl.className = `target-zone-grid ${mode === 'precision' ? 'grid-5x5' : 'grid-4x4'} mb-8`;
+                if (mode === 'precision') {
+                    targetZoneGridEl.innerHTML = TARGET_ZONE_LAYOUT_5X5.map(zoneNum => `
+                        <div id="zone-${zoneNum}" class="target-zone-cell ${STRIKE_ZONES_5X5.includes(zoneNum) ? 'strike-zone' : ''}" onclick="window.setTargetZone(${zoneNum})"><span>${zoneNum}</span></div>`).join('');
+                } else {
+                    targetZoneGridEl.innerHTML = TARGET_ZONE_LAYOUT_BASIC.map(zone => `
+                        <div id="zone-${zone.id}" 
+                             class="target-zone-cell ${STRIKE_ZONES_BASIC.includes(zone.id) ? 'strike-zone' : ''}" 
+                             style="grid-row: ${zone.row}; grid-column: ${zone.col};"
+                             onclick="window.setTargetZone(${zone.id})"><span>${zone.id}</span></div>`).join('');
+                }
+            }
+            if (targetZoneDisplayEl) targetZoneDisplayEl.textContent = `Target: --`; resetCanvas();
+        };
+
+        const fetchPitchers = async () => {
+            if (isOnlineMode) {
+                try {
+                    const snapshot = await getDocs(query(collection(db, `artifacts/${appId}/coaches/${coachId}/pitchers`)));
+                    pitchers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                } catch (error) { pitchers = getLocalData('pitchers'); }
+            } else { pitchers = getLocalData('pitchers'); }
+            if (pitcherSelect) {
+                pitcherSelect.innerHTML = '<option value="">-- Select Active Pitcher --</option>' + pitchers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                if (selectedPitcherId) pitcherSelect.value = selectedPitcherId;
+            }
+        };
+
+        const addPitcher = async () => {
+            const name = pitcherNameInput.value.trim(); const handedness = handednessSelect.value;
+            if (!name || !handedness) { showModal("Please enter a name and arm preference."); return; }
+            const newPitcherData = { name, handedness, created: new Date().toISOString(), stats: {} };
+            let newId = Date.now().toString();
+            if (isOnlineMode) {
+                try {
+                    const docRef = await addDoc(collection(db, `artifacts/${appId}/coaches/${coachId}/pitchers`), newPitcherData);
+                    newId = docRef.id;
+                } catch (error) { const lp = getLocalData('pitchers'); lp.push({ id: newId, ...newPitcherData }); setLocalData('pitchers', lp); }
+            } else { const lp = getLocalData('pitchers'); lp.push({ id: newId, ...newPitcherData }); setLocalData('pitchers', lp); }
+            await fetchPitchers(); selectPitcher(newId);
+            pitcherNameInput.value = ''; handednessSelect.value = '';
+            showModal(`${name} added to roster!`);
+        };
+
+        const selectPitcher = async (pitcherId) => {
+            isViewingPastSession = false; if (unsubscribePitches) unsubscribePitches();
+            if (viewCurrentSessionBtn) viewCurrentSessionBtn.classList.add('hidden');
+            if (!pitcherId) {
+                if (coachingNotesContainer) coachingNotesContainer.classList.add('hidden'); 
+                selectedPitcherId = null;
+                if (currentPitcherDisplay) currentPitcherDisplay.innerHTML = '<span class="text-slate-500 italic">Select Pitcher</span>';
+                if (pitcherStatsEl) pitcherStatsEl.innerHTML = ''; 
+                pitches = []; currentSessionNotes = []; updateUI();
+                return;
+            }
+            selectedPitcherId = pitcherId;
+            const pitcher = pitchers.find(p => p.id === pitcherId);
+            if (!pitcher) return;
+            selectedPitcherName = pitcher.name;
+            if (currentPitcherDisplay) {
+                currentPitcherDisplay.innerHTML = `<div class="flex items-center justify-center space-x-2"><span class="text-amber-400 font-black text-lg">${pitcher.name}</span> <span class="text-xs bg-slate-700 px-2 py-1 rounded font-bold text-slate-400">${pitcher.handedness.toUpperCase()}</span></div>`;
+            }
+            if (pitcherSelect) pitcherSelect.value = pitcherId;
+            if (pitcherStatsEl) {
+                if (pitcher.stats && Object.keys(pitcher.stats).length > 0) {
+                    const statsHtml = Object.entries(pitcher.stats).map(([type, data]) => `
+                        <div class="flex justify-between text-sm py-2 border-b border-slate-700/50 last:border-0">
+                            <span class="capitalize text-slate-400 font-bold">${type}</span>
+                            <span class="font-black text-amber-400">${Math.round(data.avgVelocity)} MPH</span>
+                        </div>`).join('');
+                    pitcherStatsEl.innerHTML = `<div class="mt-4 pt-4 border-t border-slate-700/80"><p class="text-[11px] uppercase tracking-[0.2em] font-black text-slate-500 mb-3">Career Averages</p>${statsHtml}</div>`;
+                } else { pitcherStatsEl.innerHTML = `<div class="mt-4 pt-4 border-t border-slate-700/80 text-[11px] text-slate-600 italic uppercase tracking-wider text-center">No career data available</div>`; }
+            }
+            if (coachingNotesContainer) coachingNotesContainer.classList.remove('hidden'); 
+            if (notesPitcherNameEl) notesPitcherNameEl.textContent = pitcher.name;
+            
+            // LOAD DRAFT NOTES FOR THIS PITCHER
+            currentSessionNotes = getLocalData(`draft_notes_${pitcherId}`);
+            
+            if (isOnlineMode) {
+                const pitchesRef = collection(db, `artifacts/${appId}/coaches/${coachId}/pitchers/${pitcherId}/pitches`);
+                unsubscribePitches = onSnapshot(query(pitchesRef, orderBy('timestamp')), (snapshot) => {
+                    if (!isViewingPastSession) { pitches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); updateUI(); }
+                });
+            } else { pitches = getLocalData(`pitches_${pitcherId}`); updateUI(); }
+        };
+
+        const handlePitchClick = async (event) => {
+            if (isViewingPastSession) return;
+            if (!selectedPitcherId || !selectedTargetZoneIndex) { showModal("Select a target and a pitcher first!"); return; }
+            const type = pitchTypeSelect.value; const speed = pitchSpeedInput.value.trim();
+            const rect = canvas.getBoundingClientRect(); const x = event.clientX - rect.left; const y = event.clientY - rect.top;
+            const score = calculateScore(x, y);
+            const newPitch = { x, y, score, type, speed: speed || null, targetZone: selectedTargetZoneIndex, gridMode: currentGridMode, timestamp: new Date().toISOString() };
+            if (isOnlineMode) { try { await addDoc(collection(db, `artifacts/${appId}/coaches/${coachId}/pitchers/${selectedPitcherId}/pitches`), newPitch); } catch (err) { pitches.push(newPitch); setLocalData(`pitches_${selectedPitcherId}`, pitches); updateUI(); } }
+            else { pitches.push(newPitch); setLocalData(`pitches_${selectedPitcherId}`, pitches); updateUI(); }
+            
+            // RESET PITCH SPEED INPUT AFTER RECORDING PITCH
+            if (pitchSpeedInput) pitchSpeedInput.value = '';
+        };
+
+        const saveSession = async () => {
+            if (isViewingPastSession) return;
+            if (!selectedPitcherId || pitches.length === 0) { showModal("No pitches to save."); return; }
+            
+            // AUTO-CAPTURE ANY TEXT REMAINING IN THE BOX
+            if (commentInput && commentInput.value.trim()) {
+                const text = commentInput.value.trim();
+                currentSessionNotes.unshift({ text, timestamp: new Date().toISOString() });
+                commentInput.value = '';
+                setLocalData(`draft_notes_${selectedPitcherId}`, currentSessionNotes);
+            }
+
+            saveSessionBtn.textContent = "Archiving..."; saveSessionBtn.disabled = true;
+            const sessionStats = {};
+            pitches.forEach(p => {
+                if(p.speed) {
+                    const v = parseInt(p.speed, 10);
+                    if(!isNaN(v)) { if(!sessionStats[p.type]) sessionStats[p.type] = { sum: 0, count: 0 }; sessionStats[p.type].sum += v; sessionStats[p.type].count++; }
+                }
+            });
+            try {
+                const pitcher = pitchers.find(p => p.id === selectedPitcherId);
+                let existingStats = pitcher.stats || {};
+                const newStats = { ...existingStats };
+                Object.keys(sessionStats).forEach(type => {
+                    const cur = existingStats[type] || { avgVelocity: 0, count: 0 };
+                    const totalCount = cur.count + sessionStats[type].count;
+                    const totalSum = (cur.avgVelocity * cur.count) + sessionStats[type].sum;
+                    newStats[type] = { avgVelocity: totalSum / totalCount, count: totalCount };
+                });
+
+                // DEEP CLONE DATA FOR ARCHIVE
+                const sessionData = { 
+                    pitcherId: selectedPitcherId, 
+                    pitcherName: selectedPitcherName, 
+                    totalScore, 
+                    pitchCount: pitches.length, 
+                    sessionDate: new Date().toISOString(), 
+                    pitches: JSON.parse(JSON.stringify(pitches)), 
+                    notes: JSON.parse(JSON.stringify(currentSessionNotes)) // EXPLICIT NOTE PERSISTENCE
+                };
+
+                if (isOnlineMode) {
+                    await updateDoc(doc(db, `artifacts/${appId}/coaches/${coachId}/pitchers/${selectedPitcherId}`), { stats: newStats });
+                    await addDoc(collection(db, `artifacts/${appId}/coaches/${coachId}/sessions`), sessionData);
+                } else {
+                    const lp = getLocalData('pitchers'); const idx = lp.findIndex(p => p.id === selectedPitcherId);
+                    if (idx !== -1) lp[idx].stats = newStats; setLocalData('pitchers', lp);
+                    const ls = getLocalData('sessions'); ls.push(sessionData); setLocalData('sessions', ls);
+                }
+                
+                // CLEANUP DRAFTS
+                localStorage.removeItem(`${appId}_draft_notes_${selectedPitcherId}`);
+                
+                await clearPitches(); 
+                currentSessionNotes = []; 
+                await fetchPitchers(); 
+                await selectPitcher(selectedPitcherId);
+                
+                showModal(`SUCCESS: Session for ${selectedPitcherName} archived with ${sessionData.notes.length} coaching notes included!`); 
+                updateLeaderboard();
+            } catch (error) { showModal("Error saving: " + error.message); }
+            finally { if (saveSessionBtn) { saveSessionBtn.textContent = "Archive Set"; saveSessionBtn.disabled = false; } }
+        };
+
+        const clearPitches = async () => {
+            if (isViewingPastSession) return;
+            if (isOnlineMode && selectedPitcherId) {
+                try {
+                    const snapshot = await getDocs(query(collection(db, `artifacts/${appId}/coaches/${coachId}/pitchers/${selectedPitcherId}/pitches`)));
+                    await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
+                } catch (err) {}
+            }
+            pitches = []; if (selectedPitcherId) setLocalData(`pitches_${selectedPitcherId}`, []); updateUI();
+        };
+
+        const setTargetZone = (index) => {
+            if (isViewingPastSession) return;
+            selectedTargetZoneIndex = index;
+            document.querySelectorAll('.target-zone-cell').forEach(cell => cell.classList.remove('selected'));
+            const selectedCell = document.getElementById(`zone-${index}`);
+            if (selectedCell) selectedCell.classList.add('selected');
+            if (targetZoneDisplayEl) targetZoneDisplayEl.textContent = `Target: ${index}`; resetCanvas();
+        };
+
+        const updateLeaderboard = async () => {
+            let sessions = [];
+            if (isOnlineMode) { try { sessions = (await getDocs(query(collection(db, `artifacts/${appId}/coaches/${coachId}/sessions`)))).docs.map(d => d.data()); } catch (err) { sessions = getLocalData('sessions'); } }
+            else { sessions = getLocalData('sessions'); }
+            const topScores = sessions.reduce((acc, s) => { if (!acc[s.pitcherName] || s.totalScore > acc[s.pitcherName]) acc[s.pitcherName] = s.totalScore; return acc; }, {});
+            const sorted = Object.entries(topScores).map(([name, score]) => ({ name, score })).sort((a, b) => b.score - a.score).slice(0, 3);
+            if (leaderboardListEl) {
+                leaderboardListEl.innerHTML = sorted.length > 0 ? sorted.map((p, i) => `
+                    <li class="flex items-center justify-between p-4 rounded-2xl ${i === 0 ? 'rank-1' : (i === 1 ? 'rank-2' : 'rank-3')} font-black shadow-lg mb-3 border border-black/10">
+                        <span class="truncate pr-4 text-base">${i + 1}. ${p.name}</span>
+                        <span class="font-black text-2xl">${p.score}</span>
+                    </li>`).join('') : `<p class="text-slate-600 text-center text-sm italic py-6">Waiting for results...</p>`;
+            }
+        };
+
+        const searchPitcherHistory = async () => {
+            if (!searchInput || !searchResultsEl) return;
+            const queryStr = searchInput.value.trim().toLowerCase();
+            if (!queryStr) { searchResultsEl.innerHTML = ''; return; }
+            const results = pitchers.filter(p => p.name.toLowerCase().includes(queryStr));
+            if (results.length === 0) { searchResultsEl.innerHTML = '<p class="text-slate-500 text-xs italic py-2">No profiles found.</p>'; return; }
+            
+            searchResultsEl.innerHTML = results.map(p => `
+                <div class="p-4 bg-slate-700/50 rounded-2xl border border-slate-600 mb-3 cursor-pointer hover:bg-slate-700 transition" onclick="window.viewPitcherSessions('${p.id}')">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-100">${p.name}</span>
+                        <span class="text-[10px] font-black bg-slate-800 px-2 py-1 rounded text-slate-400 uppercase tracking-widest">${p.handedness}</span>
+                    </div>
+                </div>`).join('');
+        };
+
+        const viewPitcherSessions = async (pitcherId) => {
+            if (!searchResultsEl) return;
+            let sessions = [];
+            if (isOnlineMode) {
+                try {
+                    const q = query(collection(db, `artifacts/${appId}/coaches/${coachId}/sessions`), where('pitcherId', '==', pitcherId));
+                    sessions = (await getDocs(q)).docs.map(d => d.data());
+                } catch (err) { sessions = getLocalData('sessions').filter(s => s.pitcherId === pitcherId); }
+            } else { sessions = getLocalData('sessions').filter(s => s.pitcherId === pitcherId); }
+
+            if (sessions.length === 0) {
+                searchResultsEl.innerHTML = '<p class="text-slate-500 text-xs italic py-2">No archived sessions found.</p>';
+                return;
+            }
+
+            searchResultsEl.innerHTML = `<div class="mb-4 flex items-center justify-between"><button onclick="window.searchPitcherHistory()" class="text-[10px] font-black text-blue-400 uppercase hover:underline">← Back to Search</button></div>` + sessions.sort((a,b) => new Date(b.sessionDate) - new Date(a.sessionDate)).map((s, idx) => `
+                <div class="p-4 bg-slate-900 border border-slate-700 rounded-2xl mb-2 hover:border-amber-500 transition cursor-pointer" onclick="window.loadArchivedSession('${encodeURIComponent(JSON.stringify(s))}')">
+                    <div class="flex items-center justify-between mb-1">
+                        <div class="flex flex-col">
+                            <span class="text-xs text-slate-500 font-bold">${new Date(s.sessionDate).toLocaleDateString()}</span>
+                            <span class="text-sm font-black text-slate-200">${s.pitchCount} Pitches</span>
+                        </div>
+                        <div class="text-right flex flex-col items-end">
+                             <span class="text-lg font-black text-amber-400">${s.totalScore}</span>
+                        </div>
+                    </div>
+                    ${(s.notes && s.notes.length > 0) ? `<div class="flex items-center space-x-2 mt-2"><span class="text-[9px] bg-amber-900/50 text-amber-400 border border-amber-500/30 px-2 py-1 rounded font-black uppercase tracking-wider">NOTES INCLUDED</span></div>` : ''}
+                </div>`).join('');
+        };
+
+        const loadArchivedSession = (sessionJson) => {
+            const session = JSON.parse(decodeURIComponent(sessionJson));
+            isViewingPastSession = true;
+            pitches = session.pitches || [];
+            currentSessionNotes = session.notes || []; // LOADED FROM ARCHIVE
+            totalScore = session.totalScore;
+            selectedPitcherId = session.pitcherId;
+            selectedPitcherName = session.pitcherName;
+            
+            if (viewCurrentSessionBtn) viewCurrentSessionBtn.classList.remove('hidden');
+            if (currentPitcherDisplay) {
+                currentPitcherDisplay.innerHTML = `<div class="flex items-center justify-center space-x-2"><span class="text-amber-400 font-black text-lg">${session.pitcherName}</span> <span class="text-[10px] bg-amber-950 text-amber-500 px-2 py-1 rounded font-black uppercase">HISTORY</span></div>`;
+            }
+            
+            if (currentGridMode !== (session.pitches[0]?.gridMode || 'precision')) {
+                switchGridMode(session.pitches[0]?.gridMode || 'precision');
+            }
+            
+            // ENSURE COACHING NOTES BOX IS SHOWN IN REVIEW MODE
+            if (coachingNotesContainer) coachingNotesContainer.classList.remove('hidden');
+            if (notesPitcherNameEl) notesPitcherNameEl.textContent = session.pitcherName;
+
+            updateUI(); // THIS TRIGGERS THE RE-RENDER OF PITCH LIST (INCLUDING NOTES)
+            showModal(`SUCCESS: Session feedback for ${session.pitcherName} from ${new Date(session.sessionDate).toLocaleDateString()} restored.`);
+        };
+
+        const showModal = (msg) => {
+            let m = document.createElement('div');
+            m.className = 'fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center z-[100] p-6';
+            m.innerHTML = `<div class="bg-slate-800 p-10 rounded-[2.5rem] shadow-2xl w-full max-sm text-center border-2 border-slate-700">
+                    <div class="bg-blue-600/20 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-8 text-blue-500 shadow-inner"><svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
+                    <p class="text-slate-100 text-xl font-bold mb-10 leading-snug">${msg}</p>
+                    <button class="w-full bg-blue-600 py-4 rounded-2xl text-white font-black text-lg hover:bg-blue-500 transition shadow-xl active:scale-95 uppercase tracking-wide">Got it</button>
+                </div>`;
+            m.querySelector('button').onclick = () => m.remove(); document.body.appendChild(m);
+        };
+
+        const initializeFirebase = () => {
+            if (firebaseConfig.apiKey.includes('XXXX')) { isOnlineMode = false; return; }
+            try { const app = initializeApp(firebaseConfig); db = getFirestore(app); } catch (error) { isOnlineMode = false; }
+        };
+
+        const setupUI = () => {
+            canvas = document.getElementById('strikeZoneCanvas'); 
+            if (canvas) ctx = canvas.getContext('2d');
+            
+            totalScoreEl = document.getElementById('totalScore'); pitchListEl = document.getElementById('pitchList');
+            clearButton = document.getElementById('clearPitches'); pitchesContainer = document.querySelector('.strike-zone-container');
+            pitchTypeSelect = document.getElementById('pitchType'); pitchTypeScoresEl = document.getElementById('pitchTypeScores');
+            pitcherNameInput = document.getElementById('pitcherName'); addPitcherButton = document.getElementById('addPitcher');
+            pitcherSelect = document.getElementById('pitcherSelect'); currentPitcherDisplay = document.getElementById('currentPitcherDisplay');
+            saveSessionBtn = document.getElementById('saveSession'); searchInput = document.getElementById('searchInput');
+            searchBtn = document.getElementById('searchBtn'); searchResultsEl = document.getElementById('searchResults');
+            viewCurrentSessionBtn = document.getElementById('viewCurrentSession'); handednessSelect = document.getElementById('handednessSelect');
+            targetZoneGridEl = document.getElementById('targetZoneGrid'); targetZoneDisplayEl = document.getElementById('targetZoneDisplay');
+            pitchSpeedInput = document.getElementById('pitchSpeed'); appContainer = document.getElementById('app-container');
+            statusDisplayEl = document.getElementById('statusDisplay'); pitchCountEl = document.getElementById('pitchCount');
+            coachingNotesContainer = document.getElementById('coachingNotesContainer'); notesPitcherNameEl = document.getElementById('notesPitcherName');
+            commentInput = document.getElementById('commentInput'); saveCommentBtn = document.getElementById('saveCommentBtn');
+            commentsListEl = document.getElementById('commentsList'); leaderboardListEl = document.getElementById('leaderboardList');
+            pitcherStatsEl = document.getElementById('pitcherStats'); coachingNotesHeader = document.getElementById('coachingNotesHeader');
+
+            window.addEventListener('resize', resetCanvas); 
+            if (canvas) canvas.addEventListener('mousedown', handlePitchClick);
+            if (clearButton) clearButton.onclick = clearPitches; 
+            if (addPitcherButton) addPitcherButton.onclick = addPitcher;
+            if (pitcherSelect) pitcherSelect.onchange = (e) => selectPitcher(e.target.value);
+            if (saveSessionBtn) saveSessionBtn.onclick = saveSession;
+            if (viewCurrentSessionBtn) viewCurrentSessionBtn.onclick = () => { isViewingPastSession = false; viewCurrentSessionBtn.classList.add('hidden'); selectPitcher(selectedPitcherId); };
+            
+            if (saveCommentBtn) saveCommentBtn.onclick = async () => {
+                const text = commentInput.value.trim(); if (!selectedPitcherId || !text) return;
+                currentSessionNotes.unshift({ text, timestamp: new Date().toISOString() });
+                
+                // SAVE TO PERSISTENT DRAFT
+                setLocalData(`draft_notes_${selectedPitcherId}`, currentSessionNotes);
+                
+                commentInput.value = ''; updateUI();
+            };
+
+            if (searchBtn) searchBtn.onclick = searchPitcherHistory;
+            if (searchInput) searchInput.onkeyup = (e) => { if (e.key === 'Enter') searchPitcherHistory(); };
+
+            window.setTargetZone = setTargetZone;
+            window.switchGridMode = switchGridMode;
+            window.searchPitcherHistory = searchPitcherHistory;
+            window.viewPitcherSessions = viewPitcherSessions;
+            window.loadArchivedSession = loadArchivedSession;
+
+            if (appContainer) appContainer.classList.remove('hidden');
+            if (statusDisplayEl) {
+                statusDisplayEl.textContent = isOnlineMode ? `Cloud Enabled` : `Local Only`;
+                statusDisplayEl.className = isOnlineMode ? "text-[11px] font-black tracking-widest text-amber-400 uppercase" : "text-[11px] font-black tracking-widest text-amber-500 uppercase";
+            }
+            
+            switchGridMode('precision');
+            fetchPitchers(); updateLeaderboard(); setTimeout(resetCanvas, 200);
+        };
+
+        const updateNotesUI = () => {
+            if (coachingNotesHeader) coachingNotesHeader.textContent = isViewingPastSession ? "Session Feedback Review" : "In-Game Coaching Notes";
+            if (commentInput && commentInput.parentElement) commentInput.parentElement.classList.toggle('hidden', isViewingPastSession);
+            if (commentsListEl) {
+                commentsListEl.innerHTML = currentSessionNotes.length > 0 
+                    ? currentSessionNotes.map(n => `
+                        <div class="p-4 bg-slate-700/60 rounded-2xl text-base border-l-4 border-amber-500 shadow-md mb-3">
+                            <p class="text-slate-100 leading-relaxed font-medium">${n.text}</p>
+                            <p class="text-xs text-slate-500 mt-2 font-bold italic uppercase tracking-wide">${new Date(n.timestamp).toLocaleTimeString()} - ${new Date(n.timestamp).toLocaleDateString()}</p>
+                        </div>`).join('')
+                    : `<div class="flex flex-col items-center justify-center py-10 text-slate-600 italic"><p class="text-sm">No saved notes for this session.</p></div>`;
+            }
+        };
+
+        window.onload = () => { initializeFirebase(); setupUI(); };
+    </script>
+
+    <div id="app-container" class="hidden flex flex-col lg:flex-row items-stretch p-6 lg:p-12 w-full max-w-[1700px] mx-auto space-y-10 lg:space-y-0 lg:space-x-12">
+        <!-- Sidebar (Left) -->
+        <div class="w-full lg:w-[320px] shrink-0 flex flex-col space-y-8">
+            <div class="flex flex-col space-y-1">
+                <h1 class="text-4xl font-black text-white italic tracking-tighter">PITCHPRO<span class="text-blue-500 font-normal tracking-normal not-italic ml-1">COACH</span></h1>
+                <div id="statusDisplay"></div>
+            </div>
+
+            <!-- Roster -->
+            <div class="bg-slate-800/60 backdrop-blur-xl p-8 rounded-[2rem] border-2 border-slate-700/50 shadow-2xl">
+                <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-6 flex items-center"><svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>ROSTER</h2>
+                <div class="flex flex-col gap-4 mb-8">
+                    <input type="text" id="pitcherName" placeholder="Pitcher Name" class="w-full p-4 rounded-2xl bg-slate-900 border-2 border-slate-700 text-white font-bold outline-none placeholder:text-slate-600 focus:border-blue-500 transition">
+                    <select id="handednessSelect" class="w-full p-4 rounded-2xl bg-slate-900 border-2 border-slate-700 text-white font-black uppercase tracking-widest appearance-none outline-none focus:border-blue-500 transition"><option value="">SELECT ARM</option><option value="right">RIGHT HAND</option><option value="left">LEFT HAND</option></select>
+                    <button id="addPitcher" class="w-full bg-blue-600 py-4 rounded-2xl font-black text-white hover:bg-blue-500 transition shadow-xl active:scale-95 uppercase">Create Profile</button>
+                </div>
+                <div class="space-y-5">
+                    <select id="pitcherSelect" class="w-full p-4 rounded-2xl bg-slate-900 border-2 border-slate-700 text-white font-bold outline-none"></select>
+                    <div id="currentPitcherDisplay" class="bg-slate-900/50 p-6 rounded-3xl border-2 border-slate-700/30 shadow-inner flex flex-col items-center"><span class="text-slate-600 italic font-medium">No selection</span></div>
+                    <div id="pitcherStats"></div>
+                </div>
+            </div>
+
+            <!-- Top Performers -->
+            <div class="bg-slate-800/60 backdrop-blur-xl p-8 rounded-[2rem] border-2 border-slate-700/50 shadow-2xl">
+                <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-6 flex items-center"><svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>TOP PERFORMERS</h2>
+                <ul id="leaderboardList"></ul>
+            </div>
+        </div>
+
+        <!-- Main Workspace (Center) -->
+        <div class="flex-grow flex flex-col items-center space-y-10">
+            <div class="flex flex-col md:flex-row items-center lg:items-start justify-center w-full gap-10">
+                <div class="w-full max-w-[500px] flex flex-col space-y-6">
+                    <div class="strike-zone-container" id="pitchesContainer"><canvas id="strikeZoneCanvas"></canvas></div>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="flex flex-col bg-slate-800 border-2 border-slate-700 rounded-3xl p-6 shadow-xl text-center">
+                            <span class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1">TOTAL POINTS</span>
+                            <div id="totalScore" class="text-3xl font-black text-amber-400">0</div>
+                        </div>
+                        <div class="flex flex-col bg-slate-800 border-2 border-slate-700 rounded-3xl p-6 shadow-xl text-center">
+                            <span class="text-[11px] font-black text-slate-500 uppercase tracking-widest mb-1">PITCH COUNT</span>
+                            <div id="pitchCount" class="text-3xl font-black text-white">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="w-full max-w-[380px] flex flex-col space-y-8">
+                    <div class="bg-slate-800/80 p-8 rounded-[2.5rem] border-2 border-slate-700/50 shadow-2xl">
+                        <div class="flex items-center justify-between mb-6">
+                            <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500">TARGET GRID</h2>
+                            <p id="targetZoneDisplay" class="text-[11px] font-black bg-amber-500/20 text-amber-400 px-4 py-2 rounded-full border border-amber-500/40 uppercase">TARGET: --</p>
+                        </div>
+                        <div class="target-zone-grid grid-5x5 mb-8" id="targetZoneGrid"></div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <button id="saveSession" class="bg-amber-600 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black py-5 rounded-2xl hover:bg-amber-500 transition shadow-xl active:scale-95 uppercase text-base">Archive Set</button>
+                            <button id="clearPitches" class="bg-slate-700 disabled:text-slate-500 text-slate-200 font-black py-5 rounded-2xl hover:bg-slate-600 transition uppercase text-base">Reset</button>
+                        </div>
+                    </div>
+                    
+                    <button id="viewCurrentSession" class="w-full bg-slate-700/60 text-amber-400 py-5 rounded-2xl hidden hover:bg-slate-600 border-2 border-amber-500/30 font-black text-base uppercase tracking-wider">Return to Live Coaching</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History & Settings Panel (Right) -->
+        <div class="w-full lg:w-[360px] p-8 bg-slate-800/60 backdrop-blur-xl rounded-[2.5rem] border-2 border-slate-700/50 shadow-2xl flex flex-col space-y-10">
+            <div>
+                <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-6 flex items-center"><svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>PITCH OPTIONS</h2>
+                
+                <div class="flex flex-col space-y-3 mb-8">
+                    <label class="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">GRID LAYOUT</label>
+                    <div class="mode-toggle-container">
+                        <div id="tab-precision" class="toggle-tab active" onclick="window.switchGridMode('precision')">Precision</div>
+                        <div id="tab-basic" class="toggle-tab" onclick="window.switchGridMode('basic')">Basic</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-5 mb-8">
+                    <div class="flex flex-col space-y-2">
+                        <label class="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">PITCH TYPE</label>
+                        <select id="pitchType" class="p-4 rounded-2xl bg-slate-900 border-2 border-slate-700 text-white font-bold outline-none focus:border-blue-500 transition">
+                            <option value="fastball">Fastball</option>
+                            <option value="curveball">Curveball</option>
+                            <option value="slider">Slider</option>
+                            <option value="changeup">Changeup</option>
+                            <option value="sinker">Sinker</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col space-y-2">
+                        <label class="text-[11px] font-black text-slate-500 ml-1 uppercase tracking-widest">SPEED (MPH)</label>
+                        <input type="number" id="pitchSpeed" placeholder="Velocity" class="p-4 rounded-2xl bg-slate-900 border-2 border-slate-700 text-white font-bold outline-none focus:border-blue-500 transition">
+                    </div>
+                </div>
+                <ul id="pitchTypeScores" class="space-y-2"></ul>
+            </div>
+
+            <div id="coachingNotesContainer" class="hidden">
+                <h2 id="coachingNotesHeader" class="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-6 flex items-center"><svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"></path></svg>COACH'S BOX <span id="notesPitcherName" class="ml-2 text-blue-400 font-black"></span></h2>
+                <div class="flex flex-col space-y-4">
+                    <textarea id="commentInput" placeholder="Add scout feedback..." class="w-full p-5 bg-slate-900 border-2 border-slate-700 rounded-3xl h-28 text-base text-slate-200 outline-none resize-none focus:border-amber-500 transition placeholder:text-slate-600 font-medium"></textarea>
+                    <button id="saveCommentBtn" class="w-full bg-slate-700 py-4 rounded-2xl font-black text-sm text-amber-400 hover:bg-slate-600 border border-amber-500/20 shadow-lg uppercase tracking-wider">Post Feedback</button>
+                    <div id="commentsList" class="mt-4 space-y-4 max-h-[180px] overflow-y-auto pr-2"></div>
+                </div>
+            </div>
+
+            <div class="flex-grow flex flex-col min-h-0 border-t-2 border-slate-700/50 pt-8">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500">HISTORY</h2>
+                    <div class="flex bg-slate-900 rounded-xl p-1.5 border-2 border-slate-700">
+                        <input type="text" id="searchInput" placeholder="Find Pitcher..." class="bg-transparent text-xs p-2 px-3 text-white outline-none w-24 font-bold">
+                        <button id="searchBtn" class="bg-blue-600 p-2 rounded-lg active:scale-95 transition-all"><svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></button>
+                    </div>
+                </div>
+                <div id="searchResults" class="max-h-[200px] overflow-y-auto pr-2 mb-6"></div>
+                <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-4 flex items-center">PITCH LOG</h2>
+                <ul id="pitchList" class="flex-grow overflow-y-auto pr-2"></ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
