@@ -540,7 +540,7 @@
 
                 pitchListEl.innerHTML = logHtml;
             }
-            redrawPitches(); updateNotesUI(); renderSummary();
+            redrawPitches(); updateNotesUI(); renderSummary(); renderPdfPitchList();
         };
 
         const switchGridMode = (mode) => {
@@ -1032,7 +1032,50 @@
             }
         };
 
+        const renderPdfPitchList = () => {
+            const pdfPitchList = document.getElementById("pdfPitchList");
+            if (!pdfPitchList) return;
+
+            if (pitches.length === 0) {
+                pdfPitchList.innerHTML = `
+                <div class="text-sm text-slate-500 italic">
+                    No pitches recorded.
+                </div>
+            `;
+                return;
+            }
+
+            pdfPitchList.innerHTML = pitches.map((pitch, index) => `
+            <div class="flex items-center justify-between bg-slate-800/70 border border-slate-700 rounded-xl px-4 py-3">
+                <div class="flex flex-col">
+                    <span class="text-[11px] font-black uppercase tracking-wide text-slate-500">
+                        Pitch ${index + 1}
+                    </span>
+                    <span class="text-sm font-bold text-slate-100 capitalize">
+                        ${pitch.type}
+                        <span class="text-slate-400 font-medium">
+                            @ ${pitch.speed || '--'} MPH
+                        </span>
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-3 text-right">
+                    <span class="text-xs font-bold text-slate-400 uppercase">
+                        Zone ${pitch.landedZoneId ?? '--'}
+                    </span>
+                    <span class="text-lg font-black text-amber-400">
+                        +${pitch.score}
+                    </span>
+                </div>
+            </div>
+        `).join("");
+        };
+
         const downloadSummaryPDF = async () => {
+            renderSummary();
+            renderPdfPitchList();
+
+            await new Promise(resolve => requestAnimationFrame(resolve));
 
             const summary = document.getElementById("summaryPanel");
 
@@ -1042,7 +1085,6 @@
             });
 
             const imgData = canvas.toDataURL("image/png");
-
             const { jsPDF } = window.jspdf;
 
             const pdf = new jsPDF({
@@ -1054,7 +1096,6 @@
             pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
 
             const pitcher = selectedPitcherName || "session";
-
             pdf.save(`${pitcher}_pitch_summary.pdf`);
         };
 
@@ -1284,6 +1325,14 @@
                 <div class="mt-4 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                     * Heatmap counts where pitches actually landed
                 </div>
+
+                <div class="mt-6 pt-6 border-t border-slate-700/60">
+                    <div class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4">
+                        Individual Pitches
+                    </div>
+
+                    <div id="pdfPitchList" class="space-y-2"></div>
+                </div>
             </div>
 
 
@@ -1302,9 +1351,10 @@
                     </div>
                 </div>
                 <div id="searchResults" class="max-h-[200px] overflow-y-auto pr-2 mb-6"></div>
-                <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-4 flex items-center">PITCH
+                <h2 class="hidden text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-4 flex items-center">
+                    PITCH
                     LOG</h2>
-                <ul id="pitchList" class="flex-grow overflow-y-auto pr-2"></ul>
+                <ul id="pitchList" class="hidden flex-grow overflow-y-auto pr-2"></ul>
             </div>
         </div>
     </div>
