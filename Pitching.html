@@ -273,6 +273,9 @@
 </head>
 
 <body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -904,6 +907,11 @@
 
             switchGridMode('precision');
             fetchPitchers(); updateLeaderboard(); setTimeout(resetCanvas, 200);
+            const pdfBtn = document.getElementById("btnDownloadPDF");
+
+            if (pdfBtn) {
+                pdfBtn.onclick = downloadSummaryPDF;
+            }
         };
 
         const updateNotesUI = () => {
@@ -1024,6 +1032,32 @@
             }
         };
 
+        const downloadSummaryPDF = async () => {
+
+            const summary = document.getElementById("summaryPanel");
+
+            const canvas = await html2canvas(summary, {
+                scale: 2,
+                backgroundColor: "#0f172a"
+            });
+
+            const imgData = canvas.toDataURL("image/png");
+
+            const { jsPDF } = window.jspdf;
+
+            const pdf = new jsPDF({
+                orientation: "portrait",
+                unit: "px",
+                format: [canvas.width, canvas.height]
+            });
+
+            pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+
+            const pitcher = selectedPitcherName || "session";
+
+            pdf.save(`${pitcher}_pitch_summary.pdf`);
+        };
+
     </script>
 
     <div id="app-container"
@@ -1062,7 +1096,8 @@
                         class="w-full p-4 rounded-2xl bg-slate-900 border-2 border-slate-700 text-white font-bold outline-none"></select>
                     <div id="currentPitcherDisplay"
                         class="bg-slate-900/50 p-6 rounded-3xl border-2 border-slate-700/30 shadow-inner flex flex-col items-center">
-                        <span class="text-slate-600 italic font-medium">No selection</span></div>
+                        <span class="text-slate-600 italic font-medium">No selection</span>
+                    </div>
                     <div id="pitcherStats"></div>
                 </div>
             </div>
@@ -1191,16 +1226,20 @@
             <div id="summaryPanel" class="bg-slate-900/40 border-2 border-slate-700/50 rounded-[2.5rem] p-7 shadow-2xl">
                 <div class="flex items-center justify-between mb-6">
                     <h2 class="text-xs font-black uppercase tracking-[0.2em] text-slate-500 flex items-center">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M9 17v-2a4 4 0 014-4h2M9 7h6m-3 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
                         SUMMARY
                     </h2>
-                    <button id="btnToggleSummary"
-                        class="text-[10px] font-black text-blue-400 uppercase hover:underline">
-                        Refresh
-                    </button>
+
+                    <div class="flex gap-2">
+                        <button id="btnDownloadPDF"
+                            class="text-[10px] font-black text-amber-400 uppercase hover:underline">
+                            Export PDF
+                        </button>
+
+                        <button id="btnToggleSummary"
+                            class="text-[10px] font-black text-blue-400 uppercase hover:underline">
+                            Refresh
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Totals -->
@@ -1268,6 +1307,8 @@
             </div>
         </div>
     </div>
+
+
 </body>
 
 </html>
